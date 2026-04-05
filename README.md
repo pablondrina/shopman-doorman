@@ -1,76 +1,70 @@
 # shopman-doorman
 
-OTP authentication with device trust and magic links.
+Autenticação passwordless para Django. OTP via WhatsApp/SMS com fallback chain, magic links, device trust, e bridge tokens para integração com sistemas externos.
 
 Part of the [Django Shopman](https://github.com/pablondrina/django-shopman) commerce framework.
 
-## Overview
+## Domínio
 
-**Domain:** Auth
-**Namespace:** `shopman.doorman`
-**Pip package:** `shopman-doorman`
+- **VerificationCode** — código OTP com TTL, rate limiting, e max tentativas. Entrega via WhatsApp (primário) → SMS (fallback).
+- **TrustedDevice** — dispositivo confiável do cliente. Fingerprint + user agent + geolocalização. Gerenciável pelo cliente.
+- **AccessLink** — magic link para acesso direto (ex: link no WhatsApp abre a conta sem OTP).
+- **CustomerUser** — bridge entre Customer (guestman) e User (Django auth). Criado automaticamente no primeiro login.
 
-### Main Models
+## Services
 
-VerificationCode, TrustedDevice, AccessLink, MagicCode
+| Service | O que faz |
+|---------|-----------|
+| `VerificationService` | Gera e valida OTP. Fallback chain WhatsApp → SMS → Email. Rate limiting por phone. |
+| `DeviceTrustService` | Registra, valida e revoga dispositivos confiáveis. |
+| `AccessLinkService` | Gera e valida magic links com TTL. |
 
-## Installation
+## Fluxo de Login
+
+1. Cliente informa telefone
+2. Sistema envia OTP via WhatsApp (fallback SMS)
+3. Cliente digita código
+4. Sistema valida → cria/recupera CustomerUser → login Django
+5. Dispositivo é registrado como confiável (opcional)
+
+## Configuração
+
+```python
+DOORMAN = {
+    "OTP_LENGTH": 6,
+    "OTP_TTL_SECONDS": 300,
+    "OTP_MAX_ATTEMPTS": 5,
+    "DELIVERY_CHAIN": ["whatsapp", "sms"],
+    "TRUSTED_DEVICE_TTL_DAYS": 90,
+    "ACCESS_LINK_TTL_HOURS": 24,
+}
+```
+
+## Instalação
 
 ```bash
 pip install shopman-doorman
 ```
 
-## Quick Start
-
 ```python
-# settings.py
 INSTALLED_APPS = [
     "shopman.doorman",
-    # ...
+    "shopman.doorman.contrib.admin_unfold",  # opcional
+]
+
+AUTHENTICATION_BACKENDS = [
+    "shopman.doorman.backends.PhoneOTPBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 ```
 
-## Architecture
-
-This package is a **Core app** — it provides domain-specific models, services, and protocols with zero dependencies on other Shopman apps (except `shopman-utils`).
-
-Communication with other apps happens via `typing.Protocol` — no direct imports. The framework layer (`django-shopman`) orchestrates integration between core apps.
-
-## Conventions
-
-- **Monetary values:** `int` in centavos with `_q` suffix (e.g., `price_q = 1050` → R$ 10.50)
-- **Identifiers:** `ref` (not `code`). Exception: `Product.sku`
-- **Inter-app communication:** `typing.Protocol` + adapters, no direct imports
-
 ## Development
 
-This package is developed in the [django-shopman](https://github.com/pablondrina/django-shopman) monorepo under `packages/doorman/`.
-
 ```bash
-# Clone the monorepo
 git clone https://github.com/pablondrina/django-shopman.git
-cd django-shopman
-
-# Install in editable mode
-pip install -e packages/doorman
-
-# Run tests
-make test-doorman
+cd django-shopman && pip install -e packages/doorman
+make test-doorman  # ~80 testes
 ```
-
-## Related Packages
-
-| Package | Domain |
-|---------|--------|
-| [django-shopman](https://github.com/pablondrina/django-shopman) | Framework orchestrator |
-| [shopman-utils](https://github.com/pablondrina/shopman-utils) | Shared utilities |
-| [shopman-omniman](https://github.com/pablondrina/shopman-omniman) | Orders |
-| [shopman-stockman](https://github.com/pablondrina/shopman-stockman) | Inventory |
-| [shopman-craftsman](https://github.com/pablondrina/shopman-craftsman) | Production |
-| [shopman-offerman](https://github.com/pablondrina/shopman-offerman) | Catalog |
-| [shopman-guestman](https://github.com/pablondrina/shopman-guestman) | CRM |
-| [shopman-doorman](https://github.com/pablondrina/shopman-doorman) | Auth |
-| [shopman-payman](https://github.com/pablondrina/shopman-payman) | Payments |
 
 ## License
 
